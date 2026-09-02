@@ -106,7 +106,8 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
     () => new Set(getCompletedLines(snapshot.game.size, snapshot.myPlayer.marks).flat()),
     [snapshot.game.size, snapshot.myPlayer.marks],
   );
-  const winner = snapshot.players.find((player) => player.userId === snapshot.game.winnerUserId) ?? null;
+  const winners = snapshot.players.filter((player) => player.bingoCount >= snapshot.game.targetBingoCount);
+  const winnerNames = winners.map((player) => player.nickname).join(", ");
   const ranking = useMemo(
     () => [...snapshot.players].sort((a, b) => b.bingoCount - a.bingoCount || a.updatedAt.localeCompare(b.updatedAt)),
     [snapshot.players],
@@ -459,8 +460,8 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
           <section className="result-modal" role="dialog" aria-modal="true" aria-labelledby="result-modal-title">
             <span className="result-modal__icon"><Trophy size={38} /></span>
             <p>경기가 끝났습니다</p>
-            <h2 id="result-modal-title">{winner ? `${winner.nickname}님 승리!` : "게임 종료"}</h2>
-            <strong>{winner ? `${winner.bingoCount} BINGO 달성` : `목표 ${snapshot.game.targetBingoCount}줄`}</strong>
+            <h2 id="result-modal-title">{winners.length > 0 ? `${winnerNames}님 ${winners.length > 1 ? "공동 승리!" : "승리!"}` : "게임 종료"}</h2>
+            <strong>{winners.length > 0 ? `목표 ${snapshot.game.targetBingoCount} BINGO 달성` : `목표 ${snapshot.game.targetBingoCount}줄`}</strong>
             <div className="result-modal__actions">
               <button className="button button--secondary" type="button" onClick={() => setShowResultPopup(false)}>결과 확인</button>
               <button className="button button--primary" type="button" onClick={onHome}>처음으로</button>
