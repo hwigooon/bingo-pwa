@@ -84,12 +84,19 @@ Secret 이름은 대소문자까지 표와 정확히 같아야 합니다.
 
 Secret을 등록해도 이미 배포된 파일은 자동으로 바뀌지 않으므로 GitHub Actions를 한 번 다시 실행해야 합니다.
 
-1. 저장소의 **Actions** 탭을 엽니다.
-2. 왼쪽에서 **Deploy Bingo PWA to GitHub Pages**를 선택합니다.
-3. **Run workflow → Run workflow**를 누릅니다.
+1. [Deploy Bingo PWA 워크플로 화면](https://github.com/hwigooon/bingo-pwa/actions/workflows/deploy-pages.yml)을 직접 엽니다.
+2. 화면 오른쪽 위의 **Run workflow** 드롭다운을 누릅니다. 저장소 전체 Actions 목록 화면에는 이 버튼이 보이지 않습니다.
+3. Branch가 `main`인지 확인한 다음, 드롭다운 안의 초록색 **Run workflow** 버튼을 한 번 더 누릅니다.
 4. 약 1~3분 뒤 초록색 체크 표시가 나타나는지 확인합니다.
 5. [배포된 Bingo PWA](https://hwigooon.github.io/bingo-pwa/)를 새로 엽니다.
 6. 상단 상태가 온라인 사용 가능으로 표시되는지 확인합니다.
+
+### `Run workflow` 버튼이 보이지 않을 때
+
+- GitHub에 `hwigooon` 계정으로 로그인되어 있는지 확인합니다.
+- 휴대폰에서는 브라우저 메뉴에서 **데스크톱 웹 사이트 요청**을 선택하면 버튼을 찾기 쉽습니다.
+- 저장소에 쓰기 권한이 없는 계정에서는 버튼이 표시되지 않습니다.
+- 이 워크플로는 `main` 브랜치가 변경될 때도 자동 실행됩니다. README 등 파일을 수정해 커밋해도 동일하게 재배포됩니다.
 
 브라우저가 이전 PWA 파일을 캐시했다면 페이지를 완전히 닫았다 다시 열거나, Safari/Chrome에서 새로고침하세요.
 
@@ -139,4 +146,3 @@ SQL의 마지막 `alter publication supabase_realtime add table ...` 세 줄이 
 ## AI 단어 추천은 나중에 설정해도 됩니다
 
 온라인 멀티플레이에 필요한 것은 1~6단계뿐입니다. 기본 사전에 없는 주제를 AI가 추천하도록 만들 때만 Supabase Edge Function과 OpenAI API 키 설정이 추가로 필요합니다.
-
