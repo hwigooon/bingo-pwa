@@ -1,7 +1,9 @@
 alter table public.games
   add column if not exists current_turn_user_id uuid references auth.users(id) on delete set null,
   add column if not exists turn_number integer not null default 0 check (turn_number >= 0),
-  add column if not exists called_words jsonb not null default '[]'::jsonb check (jsonb_typeof(called_words) = 'array');
+  add column if not exists called_words jsonb not null default '[]'::jsonb check (jsonb_typeof(called_words) = 'array'),
+  add column if not exists target_bingo_count integer not null default 1 check (target_bingo_count between 1 and 14),
+  add column if not exists winner_user_id uuid references auth.users(id) on delete set null;
 
 alter table public.game_events drop constraint if exists game_events_event_type_check;
 alter table public.game_events
@@ -25,6 +27,9 @@ declare
   row_index integer;
   column_index integer;
   diagonal_complete boolean;
+  winning_user_id uuid;
+  winning_nickname text;
+  winning_bingo_count integer;
 begin
   if auth.uid() is null then raise exception 'authentication required'; end if;
   if called_word is null or btrim(called_word) = '' or char_length(called_word) > 30 then
@@ -88,32 +93,52 @@ begin
     set marked_cells = next_marks, bingo_count = next_bingos
     where id = participant.id;
 
+    if next_bingos >= target_game.target_bingo_count and winning_user_id is null then
+      winning_user_id := participant.user_id;
+      winning_nickname := participant.nickname;
+      winning_bingo_count := next_bingos;
+    end if;
+
     if next_bingos > previous_bingos then
       insert into public.game_events(game_id, user_id, nickname, event_type, payload)
       values (target_game_id, participant.user_id, participant.nickname, 'bingo', jsonb_build_object('bingoCount', next_bingos));
     end if;
   end loop;
 
-  select user_id into next_user_id
-  from public.game_players
-  where game_id = target_game_id
-    and (joined_at, id) > (active_player.joined_at, active_player.id)
-  order by joined_at, id
-  limit 1;
+  if winning_user_id is not null then
+    update public.games
+    set status = 'finished',
+        ended_at = now(),
+        winner_user_id = winning_user_id,
+        current_turn_user_id = null,
+        called_words = called_words || jsonb_build_array(called_word)
+    where id = target_game_id;
 
-  if next_user_id is null then
+    insert into public.game_events(game_id, user_id, nickname, event_type, payload)
+    values (target_game_id, winning_user_id, winning_nickname, 'finished',
+      jsonb_build_object('winnerUserId', winning_user_id, 'bingoCount', winning_bingo_count));
+  else
     select user_id into next_user_id
     from public.game_players
     where game_id = target_game_id
+      and (joined_at, id) > (active_player.joined_at, active_player.id)
     order by joined_at, id
     limit 1;
-  end if;
 
-  update public.games
-  set current_turn_user_id = next_user_id,
-      turn_number = turn_number + 1,
-      called_words = called_words || jsonb_build_array(called_word)
-  where id = target_game_id;
+    if next_user_id is null then
+      select user_id into next_user_id
+      from public.game_players
+      where game_id = target_game_id
+      order by joined_at, id
+      limit 1;
+    end if;
+
+    update public.games
+    set current_turn_user_id = next_user_id,
+        turn_number = turn_number + 1,
+        called_words = called_words || jsonb_build_array(called_word)
+    where id = target_game_id;
+  end if;
 
   insert into public.game_events(game_id, user_id, nickname, event_type, payload)
   values (
