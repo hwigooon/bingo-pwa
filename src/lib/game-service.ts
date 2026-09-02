@@ -26,6 +26,9 @@ type GameRow = {
   word_pool: unknown;
   free_center: boolean;
   status: "waiting" | "playing" | "finished";
+  current_turn_user_id: string | null;
+  turn_number: number;
+  called_words: unknown;
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
@@ -80,6 +83,9 @@ function mapGame(row: GameRow): GameRecord {
     wordPool: asStringArray(row.word_pool),
     freeCenter: row.free_center,
     status: row.status,
+    currentTurnUserId: row.current_turn_user_id,
+    turnNumber: row.turn_number,
+    calledWords: asStringArray(row.called_words),
     createdAt: row.created_at,
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -301,9 +307,17 @@ export async function reshuffleRemoteBoard(snapshot: GameSnapshot): Promise<Game
 export async function startRemoteGame(snapshot: GameSnapshot): Promise<void> {
   const client = requireSupabase();
   const userId = await ensureUserId();
+  const firstPlayer = [...snapshot.players].sort((a, b) => a.joinedAt.localeCompare(b.joinedAt))[0];
+  if (!firstPlayer) throw new Error("참가자가 없어 게임을 시작할 수 없습니다.");
   const { error } = await client
     .from("games")
-    .update({ status: "playing", started_at: new Date().toISOString() })
+    .update({
+      status: "playing",
+      started_at: new Date().toISOString(),
+      current_turn_user_id: firstPlayer.userId,
+      turn_number: 1,
+      called_words: [],
+    })
     .eq("id", snapshot.game.id)
     .eq("host_id", userId);
   if (error) throw error;
@@ -336,46 +350,18 @@ export async function finishRemoteGame(snapshot: GameSnapshot): Promise<void> {
   ]);
 }
 
-export async function updateRemoteMarks(
-  snapshot: GameSnapshot,
-  marks: number[],
-  cellIndex: number,
-  selected: boolean,
-): Promise<void> {
+export async function callRemoteWord(snapshot: GameSnapshot, word: string): Promise<void> {
   const client = requireSupabase();
-  const userId = await ensureUserId();
-  const bingoCount = countBingos(snapshot.game.size, marks);
-  const { error } = await client
-    .from("game_players")
-    .update({ marked_cells: marks, bingo_count: bingoCount })
-    .eq("id", snapshot.myPlayer.id)
-    .eq("user_id", userId);
-  if (error) throw error;
-
-  const events: Parameters<typeof addEvents>[0] = [
-    {
-      game_id: snapshot.game.id,
-      user_id: userId,
-      nickname: snapshot.myPlayer.nickname,
-      event_type: selected ? "marked" : "unmarked",
-      payload: {
-        cellIndex,
-        word: snapshot.myPlayer.board[cellIndex] ?? "",
-        bingoCount,
-      },
-    },
-  ];
-
-  for (let milestone = snapshot.myPlayer.bingoCount + 1; milestone <= bingoCount; milestone += 1) {
-    events.push({
-      game_id: snapshot.game.id,
-      user_id: userId,
-      nickname: snapshot.myPlayer.nickname,
-      event_type: "bingo",
-      payload: { bingoCount: milestone },
-    });
+  await ensureUserId();
+  const { error } = await client.rpc("submit_bingo_turn", {
+    target_game_id: snapshot.game.id,
+    called_word: word,
+  });
+  if (error) {
+    if (error.message.includes("not your turn")) throw new Error("현재 내 차례가 아닙니다.");
+    if (error.message.includes("already called")) throw new Error("이미 나온 단어입니다.");
+    throw error;
   }
-  await addEvents(events);
 }
 
 export function subscribeToRemoteGame(gameId: string, onChange: () => void): () => void {
