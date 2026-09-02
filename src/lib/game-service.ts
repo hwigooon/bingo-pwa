@@ -29,6 +29,8 @@ type GameRow = {
   current_turn_user_id: string | null;
   turn_number: number;
   called_words: unknown;
+  target_bingo_count: number;
+  winner_user_id: string | null;
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
@@ -86,6 +88,8 @@ function mapGame(row: GameRow): GameRecord {
     currentTurnUserId: row.current_turn_user_id,
     turnNumber: row.turn_number,
     calledWords: asStringArray(row.called_words),
+    targetBingoCount: row.target_bingo_count,
+    winnerUserId: row.winner_user_id,
     createdAt: row.created_at,
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -189,6 +193,7 @@ export async function createRemoteGame(
         board_size: config.size,
         word_pool: pool,
         free_center: config.freeCenter,
+        target_bingo_count: config.targetBingoCount,
         status: "waiting",
       })
       .select("*")
