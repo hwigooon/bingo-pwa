@@ -55,6 +55,7 @@ export function BuilderScreen({
   const [numberMin, setNumberMin] = useState(1);
   const [numberMax, setNumberMax] = useState(75);
   const [freeCenter, setFreeCenter] = useState(true);
+  const [targetBingoCount, setTargetBingoCount] = useState(1);
   const [pool, setPool] = useState<string[]>(() => getLocalTopicWords("과일"));
   const [board, setBoard] = useState<string[]>(() => emptyBoard(5, true));
   const [selectedCell, setSelectedCell] = useState<number | null>(null);
@@ -79,6 +80,7 @@ export function BuilderScreen({
   function changeSize(nextSize: number) {
     const nextFree = nextSize % 2 === 1 ? freeCenter : false;
     setSize(nextSize);
+    setTargetBingoCount((current) => Math.min(current, nextSize * 2 + 2));
     if (nextSize % 2 === 0) setFreeCenter(false);
     setBoard(emptyBoard(nextSize, nextFree));
     setSelectedCell(null);
@@ -263,6 +265,7 @@ export function BuilderScreen({
       wordPool: sanitizeWords([...pool, ...board]),
       board,
       freeCenter,
+      targetBingoCount,
     };
 
     setCreatingMode(online ? "online" : "local");
@@ -311,6 +314,16 @@ export function BuilderScreen({
               </button>
             ))}
           </div>
+
+          <label className="field-label">승리 빙고 수</label>
+          <div className="target-bingo-picker" role="group" aria-label="승리 빙고 수">
+            {Array.from({ length: size * 2 + 2 }, (_, index) => index + 1).map((value) => (
+              <button key={value} type="button" className={targetBingoCount === value ? "active" : ""} onClick={() => setTargetBingoCount(value)}>
+                {value}줄
+              </button>
+            ))}
+          </div>
+          <p className="setting-help">{targetBingoCount}줄을 먼저 완성한 참가자가 승리합니다.</p>
 
           <label className="field-label">단어 유형</label>
           <div className="segmented-control">
