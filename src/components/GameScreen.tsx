@@ -88,6 +88,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
   const [notice, setNotice] = useState("");
   const [celebration, setCelebration] = useState<number | null>(null);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
+  const [showResultPopup, setShowResultPopup] = useState(initialSnapshot.game.status === "finished");
   const savedHistory = useRef(false);
   const refreshTimer = useRef<number | null>(null);
 
@@ -105,6 +106,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
     () => new Set(getCompletedLines(snapshot.game.size, snapshot.myPlayer.marks).flat()),
     [snapshot.game.size, snapshot.myPlayer.marks],
   );
+  const winner = snapshot.players.find((player) => player.userId === snapshot.game.winnerUserId) ?? null;
   const ranking = useMemo(
     () => [...snapshot.players].sort((a, b) => b.bingoCount - a.bingoCount || a.updatedAt.localeCompare(b.updatedAt)),
     [snapshot.players],
@@ -137,6 +139,10 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
     const timer = window.setTimeout(() => setNotice(""), 3200);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (isFinished) setShowResultPopup(true);
+  }, [isFinished]);
 
   useEffect(() => {
     if (!isFinished || savedHistory.current) return;
@@ -183,6 +189,9 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
             ...current.game,
             turnNumber: current.game.turnNumber + 1,
             calledWords: [...current.game.calledWords, selectedWord],
+            status: nextBingoCount >= current.game.targetBingoCount ? "finished" : current.game.status,
+            endedAt: nextBingoCount >= current.game.targetBingoCount ? new Date().toISOString() : current.game.endedAt,
+            winnerUserId: nextBingoCount >= current.game.targetBingoCount ? current.myPlayer.userId : current.game.winnerUserId,
           },
           events: [localEvent(current, "called", { word: selectedWord, turnNumber: current.game.turnNumber }), ...current.events],
         }));
@@ -307,7 +316,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
             {isWaiting ? "시작 대기" : isPlaying ? "게임 진행 중" : "게임 종료"}
           </span>
           <h1>{snapshot.game.topic}</h1>
-          <p>{snapshot.game.size} × {snapshot.game.size} 빙고 · 방 코드 <strong>{snapshot.game.roomCode}</strong></p>
+          <p>{snapshot.game.size} × {snapshot.game.size} 빙고 · 목표 <strong>{snapshot.game.targetBingoCount}줄</strong> · 방 코드 <strong>{snapshot.game.roomCode}</strong></p>
         </div>
         <div className="score-badge">
           <span>현재 기록</span>
@@ -444,6 +453,21 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
           </section>
         </aside>
       </div>
+
+      {showResultPopup && isFinished && (
+        <div className="result-modal-backdrop" role="presentation">
+          <section className="result-modal" role="dialog" aria-modal="true" aria-labelledby="result-modal-title">
+            <span className="result-modal__icon"><Trophy size={38} /></span>
+            <p>경기가 끝났습니다</p>
+            <h2 id="result-modal-title">{winner ? `${winner.nickname}님 승리!` : "게임 종료"}</h2>
+            <strong>{winner ? `${winner.bingoCount} BINGO 달성` : `목표 ${snapshot.game.targetBingoCount}줄`}</strong>
+            <div className="result-modal__actions">
+              <button className="button button--secondary" type="button" onClick={() => setShowResultPopup(false)}>결과 확인</button>
+              <button className="button button--primary" type="button" onClick={onHome}>처음으로</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {celebration !== null && (
         <div className="bingo-celebration" role="status">
