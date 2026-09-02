@@ -33,6 +33,7 @@ import {
   subscribeToRemoteGame,
   updateRemoteMarks,
 } from "../lib/game-service";
+import { buildInviteUrl } from "../lib/invite";
 import type { GameEventRecord, GameSnapshot, HistoryEntry, PlayerRecord } from "../types";
 
 interface GameScreenProps {
@@ -92,9 +93,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
   const isPlaying = snapshot.game.status === "playing";
   const isFinished = snapshot.game.status === "finished";
   const inviteUrl = useMemo(() => {
-    const url = new URL(import.meta.env.BASE_URL, window.location.origin);
-    url.searchParams.set("room", snapshot.game.roomCode);
-    return url.toString();
+    return buildInviteUrl(window.location.origin, import.meta.env.BASE_URL, snapshot.game.roomCode);
   }, [snapshot.game.roomCode]);
 
   const winningCells = useMemo(
@@ -274,9 +273,15 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
   async function shareInvite() {
     if (navigator.share) {
       try {
-        await navigator.share({ title: `${snapshot.game.topic} 빙고`, text: `방 코드 ${snapshot.game.roomCode}`, url: inviteUrl });
+        await navigator.share({
+          title: `${snapshot.game.topic} 빙고 초대`,
+          text: `${snapshot.game.topic} 빙고에 참여하세요! 방 코드: ${snapshot.game.roomCode}`,
+          url: inviteUrl,
+        });
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        await copyInvite();
         return;
       }
     }
@@ -365,6 +370,10 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
               <div className="qr-frame"><QRCodeSVG value={inviteUrl} size={168} level="M" bgColor="#ffffff" fgColor="#101525" /></div>
               <strong className="invite-code">{snapshot.game.roomCode}</strong>
               <p>QR을 스캔하거나 링크를 공유하세요.</p>
+              <div className="invite-url-row">
+                <input value={inviteUrl} readOnly aria-label="게임 초대 링크" onFocus={(event) => event.currentTarget.select()} />
+                <button type="button" onClick={copyInvite} aria-label="초대 링크 복사"><Copy size={17} /></button>
+              </div>
               <div className="invite-actions">
                 <button type="button" onClick={copyInvite}><Copy size={17} /> 링크 복사</button>
                 <button type="button" onClick={shareInvite}><Share2 size={17} /> 공유</button>

@@ -1471,6 +1471,28 @@ textarea::placeholder {
   text-align: center;
 }
 
+.invite-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.invite-url-row input {
+  min-width: 0;
+  padding: 10px 11px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-url-row button {
+  justify-content: center;
+  padding: 0;
+}
+
 .invite-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

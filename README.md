@@ -13,6 +13,7 @@ iPhone, Android, 태블릿, PC에서 같은 코드로 실행되는 터치 중심
 - 칸 터치로 표시하고 다시 터치해 취소
 - 가로·세로·대각선 빙고 자동 계산
 - 닉네임, 방 코드, QR 초대, 참가자별 빙고 현황
+- 게임 생성 직후 초대 URL 표시·복사·모바일 공유
 - 선택·취소·빙고·시작·종료 이벤트 기록
 - 기기 내 최근 게임 결과 저장
 - iOS/Android 홈 화면 설치가 가능한 PWA
@@ -50,6 +51,8 @@ npm run build
 
 ## Supabase 연결
 
+처음 설정한다면 먼저 **[Supabase 온라인 멀티플레이 설정 가이드](SUPABASE_SETUP.md)**를 순서대로 따라 하세요. Dashboard에서 눌러야 할 메뉴, GitHub Secret 등록, 휴대폰 2대 테스트와 오류 해결 방법까지 설명합니다.
+
 ### 1. 프로젝트와 익명 로그인 준비
 
 1. Supabase에서 새 프로젝트를 만듭니다.
@@ -64,14 +67,14 @@ npm run build
 cp .env.example .env.local
 ```
 
-`.env.local`에 Supabase Project URL과 anon key를 입력합니다.
+`.env.local`에 Supabase Project URL과 Publishable key를 입력합니다. 환경변수 이름은 기존 호환성을 위해 `VITE_SUPABASE_ANON_KEY`를 유지합니다.
 
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 ```
 
-프런트엔드에는 반드시 `anon` key만 사용합니다. `service_role` key는 넣지 마세요. 데이터 변경 권한은 SQL에 포함된 RLS 정책으로 제한됩니다.
+프런트엔드에는 반드시 `sb_publishable_...` 형식의 Publishable key를 사용합니다. 레거시 anon key도 호환되지만 신규 설정은 Publishable key가 권장됩니다. `sb_secret_...` 또는 `service_role` key는 넣지 마세요. 데이터 변경 권한은 SQL에 포함된 RLS 정책으로 제한됩니다.
 
 ### 3. 선택 사항: 사전에 없는 주제의 AI 추천
 
