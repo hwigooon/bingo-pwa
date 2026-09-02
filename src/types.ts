@@ -14,6 +14,8 @@ export interface GameRecord {
   currentTurnUserId: string | null;
   turnNumber: number;
   calledWords: string[];
+  targetBingoCount: number;
+  winnerUserId: string | null;
   createdAt: string;
   startedAt: string | null;
   endedAt: string | null;
@@ -55,6 +57,7 @@ export interface BoardConfig {
   wordPool: string[];
   board: string[];
   freeCenter: boolean;
+  targetBingoCount: number;
 }
 
 export interface HistoryEntry {
