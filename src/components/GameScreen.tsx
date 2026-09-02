@@ -2,6 +2,7 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Megaphone,
   Copy,
   Crown,
   DoorOpen,
@@ -31,7 +32,7 @@ import {
   reshuffleRemoteBoard,
   startRemoteGame,
   subscribeToRemoteGame,
-  updateRemoteMarks,
+  callRemoteWord,
 } from "../lib/game-service";
 import { buildInviteUrl } from "../lib/invite";
 import type { GameEventRecord, GameSnapshot, HistoryEntry, PlayerRecord } from "../types";
@@ -65,6 +66,7 @@ function describeEvent(event: GameEventRecord): string {
   switch (event.eventType) {
     case "joined": return `${event.nickname}님이 참가했습니다.`;
     case "started": return "게임을 시작했습니다.";
+    case "called": return `${event.nickname}님이 ‘${word}’을 불렀습니다.`;
     case "marked": return `${event.nickname}님이 ‘${word}’을 표시했습니다.`;
     case "unmarked": return `${event.nickname}님이 ‘${word}’ 표시를 취소했습니다.`;
     case "bingo": return `${event.nickname}님이 ${count} BINGO를 달성했습니다!`;
@@ -85,6 +87,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
   const [busyAction, setBusyAction] = useState<"mark" | "start" | "finish" | "shuffle" | null>(null);
   const [notice, setNotice] = useState("");
   const [celebration, setCelebration] = useState<number | null>(null);
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const savedHistory = useRef(false);
   const refreshTimer = useRef<number | null>(null);
 
@@ -92,6 +95,8 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
   const isWaiting = snapshot.game.status === "waiting";
   const isPlaying = snapshot.game.status === "playing";
   const isFinished = snapshot.game.status === "finished";
+  const turnPlayer = snapshot.players.find((player) => player.userId === snapshot.game.currentTurnUserId) ?? null;
+  const isMyTurn = isPlaying && snapshot.game.currentTurnUserId === snapshot.myPlayer.userId;
   const inviteUrl = useMemo(() => {
     return buildInviteUrl(window.location.origin, import.meta.env.BASE_URL, snapshot.game.roomCode);
   }, [snapshot.game.roomCode]);
@@ -150,48 +155,47 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
     savedHistory.current = true;
   }, [isFinished, onSaveHistory, ranking, snapshot]);
 
-  async function toggleCell(index: number) {
-    if (!isPlaying || busyAction === "mark" || snapshot.myPlayer.board[index] === "FREE") return;
-    const currentlyMarked = snapshot.myPlayer.marks.includes(index);
-    const nextMarks = currentlyMarked
-      ? snapshot.myPlayer.marks.filter((mark) => mark !== index)
-      : [...snapshot.myPlayer.marks, index].sort((a, b) => a - b);
-    const nextBingoCount = countBingos(snapshot.game.size, nextMarks);
-    const previous = snapshot;
-    const nextPlayer: PlayerRecord = {
-      ...snapshot.myPlayer,
-      marks: nextMarks,
-      bingoCount: nextBingoCount,
-      updatedAt: new Date().toISOString(),
-    };
+  function selectCell(index: number) {
+    const word = snapshot.myPlayer.board[index];
+    if (!isMyTurn || busyAction || !word || word === "FREE" || snapshot.game.calledWords.includes(word)) return;
+    setSelectedWord((current) => current === word ? null : word);
+  }
 
-    setSnapshot((current) => updateMyPlayer(current, nextPlayer));
+  async function confirmTurn() {
+    if (!isMyTurn || !selectedWord || busyAction) return;
+    const previousBingoCount = snapshot.myPlayer.bingoCount;
     setBusyAction("mark");
     try {
       if (remote) {
-        await updateRemoteMarks(previous, nextMarks, index, !currentlyMarked);
+        await callRemoteWord(snapshot, selectedWord);
+        setSelectedWord(null);
         await refresh();
       } else {
-        const markEvent = localEvent(previous, currentlyMarked ? "unmarked" : "marked", {
-          cellIndex: index,
-          word: previous.myPlayer.board[index] ?? "",
-          bingoCount: nextBingoCount,
-        });
-        const events = [markEvent];
-        for (let milestone = previous.myPlayer.bingoCount + 1; milestone <= nextBingoCount; milestone += 1) {
-          events.unshift(localEvent(previous, "bingo", { bingoCount: milestone }));
+        const nextMarks = snapshot.myPlayer.board.reduce<number[]>((marks, word, index) => {
+          if (snapshot.myPlayer.marks.includes(index) || word === selectedWord) marks.push(index);
+          return marks;
+        }, []);
+        const nextBingoCount = countBingos(snapshot.game.size, nextMarks);
+        const nextPlayer = { ...snapshot.myPlayer, marks: nextMarks, bingoCount: nextBingoCount, updatedAt: new Date().toISOString() };
+        setSnapshot((current) => ({
+          ...updateMyPlayer(current, nextPlayer),
+          game: {
+            ...current.game,
+            turnNumber: current.game.turnNumber + 1,
+            calledWords: [...current.game.calledWords, selectedWord],
+          },
+          events: [localEvent(current, "called", { word: selectedWord, turnNumber: current.game.turnNumber }), ...current.events],
+        }));
+        setSelectedWord(null);
+        if (nextBingoCount > previousBingoCount) {
+          setCelebration(nextBingoCount);
+          window.setTimeout(() => setCelebration(null), 1800);
+          navigator.vibrate?.([40, 30, 80]);
         }
-        setSnapshot((current) => ({ ...current, events: [...events, ...current.events] }));
-      }
-
-      if (nextBingoCount > previous.myPlayer.bingoCount) {
-        setCelebration(nextBingoCount);
-        window.setTimeout(() => setCelebration(null), 1800);
-        navigator.vibrate?.([40, 30, 80]);
       }
     } catch (error) {
-      setSnapshot(previous);
-      setNotice(error instanceof Error ? error.message : "표시 상태를 저장하지 못했습니다.");
+      setNotice(error instanceof Error ? error.message : "턴을 처리하지 못했습니다.");
+      await refresh();
     } finally {
       setBusyAction(null);
     }
@@ -207,7 +211,13 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
       } else {
         setSnapshot((current) => ({
           ...current,
-          game: { ...current.game, status: "playing", startedAt: new Date().toISOString() },
+          game: {
+            ...current.game,
+            status: "playing",
+            startedAt: new Date().toISOString(),
+            currentTurnUserId: current.myPlayer.userId,
+            turnNumber: 1,
+          },
           events: [localEvent(current, "started"), ...current.events],
         }));
       }
@@ -322,7 +332,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
           <div className="play-panel__heading">
             <div>
               <h2>{snapshot.myPlayer.nickname}님의 빙고판</h2>
-              <p>{isWaiting ? "게임 시작 전까지 배치를 다시 섞을 수 있습니다." : isPlaying ? "칸을 누르면 표시되고, 다시 누르면 취소됩니다." : "최종 빙고판입니다."}</p>
+              <p>{isWaiting ? "게임 시작 전까지 배치를 다시 섞을 수 있습니다." : isPlaying ? (isMyTurn ? "단어를 고른 뒤 ‘단어 부르기’를 누르세요. 다시 누르면 선택이 취소됩니다." : `${turnPlayer?.nickname ?? "다른 참가자"}님의 차례입니다.`) : "최종 빙고판입니다."}</p>
             </div>
             {isWaiting && (
               <button className="button button--ghost button--compact" type="button" onClick={reshuffleBoard} disabled={busyAction !== null}>
@@ -331,6 +341,13 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
               </button>
             )}
           </div>
+
+          {isPlaying && (
+            <div className={`turn-banner ${isMyTurn ? "is-my-turn" : ""}`}>
+              <Megaphone size={20} />
+              <div><strong>{isMyTurn ? "내 차례입니다" : `${turnPlayer?.nickname ?? "참가자"}님의 차례`}</strong><span>{snapshot.game.turnNumber}번째 턴 · 나온 단어 {snapshot.game.calledWords.length}개</span></div>
+            </div>
+          )}
 
           <div
             className="play-grid"
@@ -343,10 +360,10 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
                 <button
                   key={`${word}-${index}`}
                   type="button"
-                  className={`${marked ? "marked" : ""} ${winningCells.has(index) ? "winning" : ""} ${word === "FREE" ? "free" : ""}`}
-                  onClick={() => void toggleCell(index)}
-                  aria-pressed={marked}
-                  disabled={!isPlaying || busyAction === "mark" || word === "FREE"}
+                  className={`${marked ? "marked" : ""} ${selectedWord === word ? "pending" : ""} ${winningCells.has(index) ? "winning" : ""} ${word === "FREE" ? "free" : ""}`}
+                  onClick={() => selectCell(index)}
+                  aria-pressed={marked || selectedWord === word}
+                  disabled={!isMyTurn || busyAction !== null || word === "FREE" || snapshot.game.calledWords.includes(word)}
                 >
                   <span>{word}</span>
                   {marked && <i><Check size={snapshot.game.size >= 6 ? 16 : 21} strokeWidth={3} /></i>}
@@ -354,6 +371,15 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
               );
             })}
           </div>
+
+          {isPlaying && isMyTurn && (
+            <div className="turn-confirm">
+              <span>{selectedWord ? `선택: ${selectedWord}` : "이번 턴에 부를 단어를 선택하세요."}</span>
+              <button className="button button--primary" type="button" onClick={() => void confirmTurn()} disabled={!selectedWord || busyAction !== null}>
+                {busyAction === "mark" ? <LoaderCircle className="spin" size={18} /> : <Megaphone size={18} />} 단어 부르기
+              </button>
+            </div>
+          )}
 
           {isPlaying && isHost && (
             <button className="button button--danger game-finish-button" type="button" onClick={finishGame} disabled={busyAction !== null}>
@@ -393,7 +419,7 @@ export function GameScreen({ initialSnapshot, remote, onHome, onSaveHistory }: G
               {ranking.map((player, index) => (
                 <div className={`player-row ${player.id === snapshot.myPlayer.id ? "is-me" : ""}`} key={player.id}>
                   <span className="player-avatar">{player.nickname.trim().slice(0, 1) || "?"}</span>
-                  <div><strong>{player.nickname}</strong><small>{player.id === snapshot.myPlayer.id ? "나" : `${index + 1}위`}</small></div>
+                  <div><strong>{player.nickname}</strong><small>{player.userId === snapshot.game.currentTurnUserId && isPlaying ? "현재 차례" : player.id === snapshot.myPlayer.id ? "나" : `${index + 1}위`}</small></div>
                   {player.userId === snapshot.game.hostId && <Crown className="host-crown" size={16} />}
                   <b>{player.bingoCount}</b>
                 </div>
