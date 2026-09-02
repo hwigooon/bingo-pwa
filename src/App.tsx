@@ -44,6 +44,8 @@ function makeLocalSnapshot(config: BoardConfig, nickname: string): GameSnapshot 
       currentTurnUserId: userId,
       turnNumber: 1,
       calledWords: [],
+      targetBingoCount: config.targetBingoCount,
+      winnerUserId: null,
       createdAt: now,
       startedAt: now,
       endedAt: null,
