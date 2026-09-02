@@ -11,6 +11,9 @@ export interface GameRecord {
   wordPool: string[];
   freeCenter: boolean;
   status: GameStatus;
+  currentTurnUserId: string | null;
+  turnNumber: number;
+  calledWords: string[];
   createdAt: string;
   startedAt: string | null;
   endedAt: string | null;
@@ -33,7 +36,7 @@ export interface GameEventRecord {
   gameId: string;
   userId: string;
   nickname: string;
-  eventType: "joined" | "started" | "marked" | "unmarked" | "bingo" | "finished";
+  eventType: "joined" | "started" | "called" | "marked" | "unmarked" | "bingo" | "finished";
   payload: Record<string, unknown>;
   createdAt: string;
 }
